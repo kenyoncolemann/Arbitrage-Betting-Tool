@@ -10,10 +10,10 @@ const API_KEY = process.env.API_KEY;
 
 app.get("/odds", async (req, res) => {
     try {
-        const response = await axios.get(`https://api.the-odds-api.com/v4/sports/upcoming/odds/?regions=uk&markets=h2h&apiKey=${API_KEY}`);
+        const response = await axios.get(`https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds/?apiKey=${API_KEY}&regions=us&markets=h2h,spreads&oddsFormat=decimal`);
         const odds = response.data;
 
-        console.log(JSON.stringify(odds, null, 2));
+        // console.log(JSON.stringify(odds, null, 2));
 
         odds.forEach(event => findArbitrage(event));
 
@@ -38,12 +38,19 @@ function findArbitrage(event) {
         return;
     }
 
-    let bestOddsA = null;
-    let bestOddsB = null;
+    let bestOddsH2hA = null;
+    let bestOddsH2hB = null;
+    let bestOddsSpreadA = null;
+    let bestOddsSpreadB = null;
+
 
     event.bookmakers.forEach((bookmaker) => {
-        // for each book maker
+        // for each bookmaker
+        // each bookmaker has a title of the sportsbook and a markets list
         // iterate through their markets
+            // each market has a key for the type of bet (ex: h2h, spread) and a list of outcomes
+            // for football each outcomes list has two outcomes, objects containing "name" (team name) and "price"
+            // compare the price for each team to the bestOdds variable, if greater, replace
 
         if (!bookmaker.markets || bookmaker.markets.length === 0 || !bookmaker.markets[0].outcomes) {
             console.log(`No valid markets or outcomes for bookmaker ${bookmaker.key}`);
@@ -51,31 +58,65 @@ function findArbitrage(event) {
         }
 
         // teams does not exist in event object, home_team and away_team
-        const oddsA = bookmaker.markets[0].outcomes.find(outcome => outcome.name === event.teams[0])?.price;
-        const oddsB = bookmaker.markets[0].outcomes.find(outcome => outcome.name === event.teams[1])?.price;
+        // iterate though markets
+        bookmaker.markets.forEach((market) => {
+            if (market.key === "h2h") {
+                const oddsH2hA = market.outcomes[0].price;
+                const oddsH2hB = market.outcomes[1].price;
 
-        if(!bestOddsA || oddsA > bestOddsA.odds) {
-            bestOddsA = {bookmaker: bookmaker.key, odds: oddsA};
-        }
+                if(!bestOddsH2hA || oddsH2hA > bestOddsH2hA) {
+                    bestOddsH2hA = {bookmaker: bookmaker.key, odds: oddsH2hA};
+                }
 
-        if(!bestOddsB || oddsB > bestOddsB.odds) {
-            bestOddsB = {bookmaker: bookmaker.key, odds: oddsB};
-        }
+                if(!bestOddsH2hB || oddsH2hB > bestOddsH2hB) {
+                    bestOddsH2hB = {bookmaker: bookmaker.key, odds: oddsH2hB};
+                }
+            }
+
+            if (market.key === "spreads") {
+                const oddsSpreadA = market.outcomes[0].price;
+                const oddsSpreadB = market.outcomes[1].price;
+
+                if(!bestOddsSpreadA || oddsSpreadA > bestOddsSpreadA) {
+                    bestOddsSpreadA = {bookmaker: bookmaker.key, odds: oddsSpreadA};
+                }
+
+                if(!bestOddsSpreadB || oddsSpreadB > bestOddsSpreadB) {
+                    bestOddsSpreadB = {bookmaker: bookmaker.key, odds: oddsSpreadB};
+                }
+            }
+        });
     });
 
-    if(bestOddsA && bestOddsB) {
-        const totalOdds = (1 / bestOddsA.odds) + (1 / bestOddsB.odds);
+    if(bestOddsH2hA && bestOddsH2hB) {
+        const totalOdds = (1 / bestOddsH2hA.odds) + (1 / bestOddsH2hB.odds);
 
         if (totalOdds < 1) {
             const margin = (1 - totalOdds) * 100;
             console.log("Arbitrage opportunity found.")
-            console.log(`Bet on ${event.teams[0]} with ${bestOddsA.bookmaker} at odds ${bestOddsA.odds}`);
-            console.log(`Bet on ${event.teams[1]} with ${bestOddsB.bookmaker} at odds ${bestOddsB.odds}`);
+            console.log(`Bet on ${event.teams[0]} with ${bestOddsH2hA.bookmaker} at odds ${bestOddsH2hA.odds}`);
+            console.log(`Bet on ${event.teams[1]} with ${bestOddsH2hB.bookmaker} at odds ${bestOddsH2hB.odds}`);
             console.log(`Profit margin: ${margin.toFixed(2)}%`);
         } else {
             console.log("No arbitrage opportunity found.");
         }
     } else {
-        console.log("No valid odds found for event")
+        console.log("No valid h2h odds found for event")
+    }
+
+    if(bestOddsSpreadA && bestOddsSpreadB) {
+        const totalOdds = (1 / bestOddsSpreadA.odds) + (1 / bestOddsSpreadB.odds);
+
+        if (totalOdds < 1) {
+            const margin = (1 - totalOdds) * 100;
+            console.log("Arbitrage opportunity found.")
+            console.log(`Bet on ${event.teams[0]} with ${bestOddsSpreadA.bookmaker} at odds ${bestOddsSpreadA.odds}`);
+            console.log(`Bet on ${event.teams[1]} with ${bestOddsSpreadB.bookmaker} at odds ${bestOddsSpreadB.odds}`);
+            console.log(`Profit margin: ${margin.toFixed(2)}%`);
+        } else {
+            console.log("No arbitrage opportunity found.");
+        }
+    } else {
+        console.log("No valid h2h odds found for event")
     }
 }
